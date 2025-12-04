@@ -1309,6 +1309,7 @@ def get_weighted_text_embeddings_s_cascade(
 def get_weighted_text_embeddings_sd3(
     pipe: StableDiffusion3Pipeline
     , prompt : str                  = ""
+    , llm_prompt: str | None        = None # T5 prompt
     , neg_prompt: str               = ""
     , pad_last_block                = True
     , use_t5_encoder                = True
@@ -1329,6 +1330,7 @@ def get_weighted_text_embeddings_sd3(
         pooled_prompt_embeds (torch.Tensor)
         negative_pooled_prompt_embeds (torch.Tensor)
     """
+    llm_prompt = prompt if llm_prompt is None else llm_prompt
     import math
     eos = pipe.tokenizer.eos_token_id
 
@@ -1353,7 +1355,7 @@ def get_weighted_text_embeddings_sd3(
     )
     # tokenizer 3 (T5-XXL)
     prompt_tokens_3, prompt_weights_3 = get_prompts_tokens_with_weights_t5(
-        pipe.tokenizer_3, prompt
+        pipe.tokenizer_3, llm_prompt
     )
 
     neg_prompt_tokens_3, neg_prompt_weights_3 = get_prompts_tokens_with_weights_t5(
@@ -1628,9 +1630,9 @@ def get_weighted_text_embeddings_sd3(
 
 def get_weighted_text_embeddings_flux1(
     pipe: FluxPipeline
-    , prompt: str       = ""
-    , prompt2: str      = None
-    , device            = None
+    , prompt: str               = ""
+    , llm_prompt: str | None    = None # T5 prompt
+    , device                    = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     This function can process long prompt with weights for flux1 model
@@ -1638,12 +1640,12 @@ def get_weighted_text_embeddings_flux1(
     Args:
         pipe (['FluxPipeline']): The FluxPipeline
         prompt (['string']): the 1st prompt
-        prompt2 (['string']): the 2nd prompt
+        llm_prompt (['string']): the 2nd prompt
         device (['string']): target device
     Returns:
         A tuple include two embedding tensors
     """
-    prompt2 = prompt if prompt2 is None else prompt2
+    llm_prompt = prompt if llm_prompt is None else llm_prompt
 
     # so that user can assign custom cuda
     if device is None or device == 'cpu':
@@ -1663,7 +1665,7 @@ def get_weighted_text_embeddings_flux1(
 
     # tokenizer 2 - google/t5-v1_1-xxl
     prompt_tokens_2, prompt_weights_2 = get_prompts_tokens_with_weights_t5(
-        pipe.tokenizer_2, prompt2
+        pipe.tokenizer_2, llm_prompt
     )
 
     prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
