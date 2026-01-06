@@ -16,7 +16,7 @@
 # Medium: https://medium.com/@xhinker
 ## -----------------------------------------------------------------------------
 
-from sd_embed.prompt_parser import parse_prompt_attention
+from sd_embed.src.sd_embed.prompt_parser import parse_prompt_attention
 from transformers import CLIPTokenizer,T5EncoderModel,T5Tokenizer
 from diffusers import StableDiffusionPipeline, DiffusionPipeline
 import torch
@@ -31,7 +31,7 @@ from diffusers.utils import (
 )
 import math
 from diffusers import FluxPipeline
-from typing import Any
+from typing import Any, Literal
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -135,10 +135,11 @@ def get_prompts_tokens_with_weights_t5(
         text_weights = [*text_weights, *chunk_weights]
     return text_tokens,text_weights
 
-def group_tokens_and_weights(
+def group_tokens_and_weights_clip(
     token_ids: list
     , weights: list
     , pad_last_block = True
+    , extend_clip: bool = True
 ):
     """
     Produce tokens and weights in groups and pad the missing tokens
@@ -155,8 +156,8 @@ def group_tokens_and_weights(
         new_weights (2d list)
 
     Example:
-        from diffusers_plus.tools.sd_embeddings import group_tokens_and_weights
-        token_groups,weight_groups = group_tokens_and_weights(
+        from diffusers_plus.tools.sd_embeddings import group_tokens_and_weights_clip
+        token_groups,weight_groups = group_tokens_and_weights_clip(
             token_ids = token_id_list
             , weights = token_weight_list
         )
@@ -179,6 +180,10 @@ def group_tokens_and_weights(
         new_token_ids.append(temp_77_token_ids)
         new_weights.append(temp_77_weights)
 
+        # return only one block
+        if not extend_clip:
+            return new_token_ids, new_weights
+
     # padding the left
     if len(token_ids) > 0:
         padding_len         = 75 - len(token_ids) if pad_last_block else 0
@@ -188,6 +193,51 @@ def group_tokens_and_weights(
 
         temp_77_weights     = [1.0] + weights   + [1.0] * padding_len + [1.0]
         new_weights.append(temp_77_weights)
+
+    return new_token_ids, new_weights
+
+def group_tokens_and_weights_t5(
+    t5_tokenizer: T5Tokenizer
+    , token_ids: list
+    , weights: list
+    , max_length: Literal[256, 512] = 512 # pipe.tokenizer_3.model_max_length
+    , pad_last_block = True
+    , extend_t5: bool = True
+):
+    eos = t5_tokenizer.eos_token_id # e.g. 1 for T5
+    # t5 is not using BOS token
+    bos = t5_tokenizer.bos_token_id # e.g. 0 or None for T5
+
+    # 特殊トークン用の枠（BOS/EOS）を除いた、純粋な本文の許容長
+    chunk_size = max_length - (2 if bos is not None else 1)
+    new_token_ids = []
+    new_weights   = []
+
+    while len(token_ids) >= chunk_size:
+        # get the first chunk_size tokens
+        head_tokens = [token_ids.pop(0) for _ in range(chunk_size)]
+        head_weights = [weights.pop(0) for _ in range(chunk_size)]
+
+        # extract token ids and weights
+        temp_max_length_token_ids = head_tokens + [eos]
+        temp_max_length_weights   = head_weights + [1.0]
+
+        # add max_length token and weights chunk to the holder list
+        new_token_ids.append(temp_max_length_token_ids)
+        new_weights.append(temp_max_length_weights)
+
+        # return only one block
+        if not extend_t5:
+            return new_token_ids, new_weights
+
+    # Ensure consistent padding for MMDiT
+    if len(token_ids) > 0:
+        padding_len = chunk_size - len(token_ids) if pad_last_block else 0
+
+        temp_max_length_token_ids = ([bos] if bos is not None else []) + token_ids + [eos] * padding_len + [eos]
+        new_token_ids.append(temp_max_length_token_ids)
+        temp_max_length_weights = ([1.0] if bos is not None else []) + weights + [1.0] * padding_len + [1.0]
+        new_weights.append(temp_max_length_weights)
 
     return new_token_ids, new_weights
 
@@ -220,6 +270,7 @@ def get_prompt_hidden_states_sd3(
     , clip_skip: Optional[int]   = None
 ):
     # SD3 seems to use the same layer index as SDXL
+    # penultimate layer: CLIP-L 11, CLIP-G 31
     return get_prompt_hidden_states(prompt_embeds, 2, clip_skip=clip_skip)
 
 def get_weighted_text_embeddings_sd15(
@@ -298,13 +349,13 @@ def get_weighted_text_embeddings_sd15(
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups ,prompt_weight_groups = group_tokens_and_weights(
+    prompt_token_groups ,prompt_weight_groups = group_tokens_and_weights_clip(
         prompt_tokens.copy()
         , prompt_weights.copy()
         , pad_last_block = pad_last_block
     )
 
-    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights(
+    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights_clip(
         neg_prompt_tokens.copy()
         , neg_prompt_weights.copy()
         , pad_last_block = pad_last_block
@@ -515,25 +566,25 @@ def get_weighted_text_embeddings_sdxl(
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
+    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights_clip(
         prompt_tokens.copy()
         , prompt_weights.copy()
         , pad_last_block = pad_last_block
     )
 
-    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights(
+    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights_clip(
         neg_prompt_tokens.copy()
         , neg_prompt_weights.copy()
         , pad_last_block = pad_last_block
     )
 
-    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights(
+    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights_clip(
         prompt_tokens_2.copy()
         , prompt_weights_2.copy()
         , pad_last_block = pad_last_block
     )
 
-    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights(
+    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights_clip(
         neg_prompt_tokens_2.copy()
         , neg_prompt_weights_2.copy()
         , pad_last_block = pad_last_block
@@ -742,12 +793,12 @@ def get_weighted_text_embeddings_sdxl_refiner(
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights(
+    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights_clip(
         prompt_tokens_2.copy()
         , prompt_weights_2.copy()
     )
 
-    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights(
+    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights_clip(
         neg_prompt_tokens_2.copy()
         , neg_prompt_weights_2.copy()
     )
@@ -987,22 +1038,22 @@ def get_weighted_text_embeddings_sdxl_2p(
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
+    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights_clip(
         prompt_tokens.copy()
         , prompt_weights.copy()
     )
 
-    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights(
+    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights_clip(
         neg_prompt_tokens.copy()
         , neg_prompt_weights.copy()
     )
 
-    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights(
+    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights_clip(
         prompt_tokens_2.copy()
         , prompt_weights_2.copy()
     )
 
-    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights(
+    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights_clip(
         neg_prompt_tokens_2.copy()
         , neg_prompt_weights_2.copy()
     )
@@ -1192,13 +1243,13 @@ def get_weighted_text_embeddings_s_cascade(
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
+    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights_clip(
         prompt_tokens.copy()
         , prompt_weights.copy()
         , pad_last_block=pad_last_block
     )
 
-    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights(
+    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights_clip(
         neg_prompt_tokens.copy()
         , neg_prompt_weights.copy()
         , pad_last_block=pad_last_block
@@ -1309,10 +1360,13 @@ def get_weighted_text_embeddings_s_cascade(
 def get_weighted_text_embeddings_sd3(
     pipe: StableDiffusion3Pipeline
     , prompt : str                  = ""
-    , llm_prompt: str | None        = None # T5 prompt
+    , llm_prompt: Optional[str]     = None # T5 prompt
     , neg_prompt: str               = ""
     , pad_last_block                = True
     , use_t5_encoder                = True
+    , extend_clip: bool             = True
+    , extend_t5: bool               = True
+    , t5_max_length: Literal[256, 512] = 256
     , lora_scale: Optional[float]   = None
     , clip_skip: Optional[int]      = None
 ):
@@ -1335,6 +1389,8 @@ def get_weighted_text_embeddings_sd3(
     eos = pipe.tokenizer.eos_token_id
 
     dynamically_scale_lora_layers(pipe, lora_scale = lora_scale)
+
+    ###### 1.get prompts tokens with weights ######
 
     # tokenizer 1 (CLIP-L)
     prompt_tokens, prompt_weights = get_prompts_tokens_with_weights(
@@ -1412,32 +1468,61 @@ def get_weighted_text_embeddings_sd3(
             + [1.0] * abs(prompt_token_len_2 - neg_prompt_token_len_2)
         )
 
+    ###### 2.group tokens and weights ######
+
     embeds = []
     neg_embeds = []
 
-    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
-        prompt_tokens.copy()
-        , prompt_weights.copy()
+    t5_embeds = []
+    t5_neg_embeds = []
+
+    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights_clip(
+        token_ids = prompt_tokens.copy()
+        , weights = prompt_weights.copy()
         , pad_last_block = pad_last_block
+        , extend_clip = extend_clip
     )
 
-    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights(
-        neg_prompt_tokens.copy()
-        , neg_prompt_weights.copy()
+    neg_prompt_token_groups, neg_prompt_weight_groups = group_tokens_and_weights_clip(
+        token_ids = neg_prompt_tokens.copy()
+        , weights = neg_prompt_weights.copy()
         , pad_last_block = pad_last_block
+        , extend_clip = extend_clip
     )
 
-    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights(
-        prompt_tokens_2.copy()
-        , prompt_weights_2.copy()
+    prompt_token_groups_2, prompt_weight_groups_2 = group_tokens_and_weights_clip(
+        token_ids = prompt_tokens_2.copy()
+        , weights = prompt_weights_2.copy()
         , pad_last_block = pad_last_block
+        , extend_clip = extend_clip
     )
 
-    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights(
-        neg_prompt_tokens_2.copy()
-        , neg_prompt_weights_2.copy()
+    neg_prompt_token_groups_2, neg_prompt_weight_groups_2 = group_tokens_and_weights_clip(
+        token_ids = neg_prompt_tokens_2.copy()
+        , weights = neg_prompt_weights_2.copy()
         , pad_last_block = pad_last_block
+        , extend_clip = extend_clip
     )
+
+    prompt_token_groups_3, prompt_weight_groups_3 = group_tokens_and_weights_t5(
+        pipe.tokenizer_3
+        , prompt_tokens_3.copy()
+        , prompt_weights_3.copy()
+        , max_length = t5_max_length
+        , pad_last_block = pad_last_block
+        , extend_t5 = extend_t5
+    )
+
+    neg_prompt_token_groups_3, neg_prompt_weight_groups_3 = group_tokens_and_weights_t5(
+        pipe.tokenizer_3
+        , neg_prompt_tokens_3.copy()
+        , neg_prompt_weights_3.copy()
+        , max_length = t5_max_length
+        , pad_last_block = pad_last_block
+        , extend_t5 = extend_t5
+    )
+
+    ###### 3. CLIP weight embedding ######
 
     # get prompt embeddings one by one is not working.
     for i in range(len(prompt_token_groups)):
@@ -1457,6 +1542,7 @@ def get_weighted_text_embeddings_sd3(
             ,dtype = torch.long, device = pipe.device
         )
 
+        # get hidden states and concat CLIP L and CLIP G
         # use first text encoder
         prompt_embeds_1 = pipe.text_encoder(
             token_tensor.to(pipe.device)
@@ -1474,7 +1560,7 @@ def get_weighted_text_embeddings_sd3(
         pooled_prompt_embeds_2 = prompt_embeds_2[0]
 
         prompt_embeds_list = [prompt_embeds_1_hidden_states, prompt_embeds_2_hidden_states]
-        token_embedding = torch.concat(prompt_embeds_list, dim=-1).squeeze(0).to(pipe.device)
+        token_embedding = torch.concat(prompt_embeds_list, dim=-1).squeeze(0).to(pipe.device) # 768 + 1280 = 2048 dim. [T(77) x C(2048)]
 
         for j in range(len(weight_tensor)):
             if weight_tensor[j] != 1.0:
@@ -1499,7 +1585,7 @@ def get_weighted_text_embeddings_sd3(
                 # add weight method 3:
                 token_embedding[j] = token_embedding[j] * weight_tensor[j]
 
-        token_embedding = token_embedding.unsqueeze(0)
+        token_embedding = token_embedding.unsqueeze(0) # [1 x T(77) x C(2048)]
         embeds.append(token_embedding)
 
         # get negative prompt embeddings with weights
@@ -1559,25 +1645,40 @@ def get_weighted_text_embeddings_sd3(
         neg_token_embedding = neg_token_embedding.unsqueeze(0)
         neg_embeds.append(neg_token_embedding)
 
-    prompt_embeds           = torch.cat(embeds, dim = 1)
+    prompt_embeds           = torch.cat(embeds, dim = 1) # [1 x T(77xgroup num) x C(2048)]
     negative_prompt_embeds  = torch.cat(neg_embeds, dim = 1)
 
-    pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1)
+    pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1) # [1 x 2048]
     negative_pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds_1, negative_pooled_prompt_embeds_2], dim=-1)
+
+    ###### 4. T5 weight embedding and Vertical Merge CLIP ######
 
     if use_t5_encoder and pipe.text_encoder_3:
         # ----------------- generate positive t5 embeddings --------------------
-        prompt_tokens_3 = torch.tensor([prompt_tokens_3],dtype=torch.long)
+        for i in range(len(prompt_token_groups_3)):
+            token_tensor_3 = torch.tensor(
+                [prompt_token_groups_3[i]],
+                dtype=torch.long, device=pipe.device
+            )
+            t5_weight_tensor = torch.tensor(
+                prompt_weight_groups_3[i],
+                dtype=torch.float16,
+                device=pipe.device
+            )
 
-        t5_prompt_embeds    = pipe.text_encoder_3(prompt_tokens_3.to(pipe.device))[0].squeeze(0)
-        t5_prompt_embeds    = t5_prompt_embeds.to(device=pipe.device)
+            t5_prompt_embeds_chunk = pipe.text_encoder_3(token_tensor_3)[0] # [1 x T(256 or 512) x C(4096)]
+            t5_token_embedding = t5_prompt_embeds_chunk.squeeze(0).to(pipe.device) # [T(256 or 512) x C(4096)]
 
-        # add weight to t5 prompt
-        for z in range(len(prompt_weights_3)):
-            if prompt_weights_3[z] != 1.0:
-                t5_prompt_embeds[z] = t5_prompt_embeds[z] * prompt_weights_3[z]
-        t5_prompt_embeds = t5_prompt_embeds.unsqueeze(0)
+            for z in range(len(t5_weight_tensor)):
+                if t5_weight_tensor[z] != 1.0:
+                    t5_token_embedding[z] = t5_token_embedding[z] * t5_weight_tensor[z]
+
+            t5_token_embedding = t5_token_embedding.unsqueeze(0)
+            t5_embeds.append(t5_token_embedding)
+
+        t5_prompt_embeds = torch.cat(t5_embeds, dim=1)
     else:
+        # minimum token size is 1: [B(1) × T(1) × C(4096)]
         t5_prompt_embeds    = torch.zeros(1, 4096, dtype = prompt_embeds.dtype).unsqueeze(0)
         t5_prompt_embeds    = t5_prompt_embeds.to(device=pipe.device)
 
@@ -1589,24 +1690,39 @@ def get_weighted_text_embeddings_sd3(
 
     if use_t5_encoder and pipe.text_encoder_3:
         # ---------------------- get neg t5 embeddings -------------------------
-        neg_prompt_tokens_3 = torch.tensor([neg_prompt_tokens_3],dtype=torch.long)
+        for i in range(len(neg_prompt_token_groups_3)):
+            neg_token_tensor_3 = torch.tensor(
+                [neg_prompt_token_groups_3[i]],
+                dtype=torch.long, device=pipe.device
+            )
+            t5_neg_weight_tensor = torch.tensor(
+                neg_prompt_weight_groups_3[i],
+                dtype=torch.float16,
+                device=pipe.device
+            )
 
-        t5_neg_prompt_embeds    = pipe.text_encoder_3(neg_prompt_tokens_3.to(pipe.device))[0].squeeze(0)
-        t5_neg_prompt_embeds    = t5_neg_prompt_embeds.to(device=pipe.device)
+            t5_neg_prompt_embeds_chunk = pipe.text_encoder_3(neg_token_tensor_3)[0] # [1 x T(256 or 512) x C(4096)]
+            t5_neg_token_embedding = t5_neg_prompt_embeds_chunk.squeeze(0) # [T(256 or 512) x C(4096)]
 
-        # add weight to neg t5 embeddings
-        for z in range(len(neg_prompt_weights_3)):
-            if neg_prompt_weights_3[z] != 1.0:
-                t5_neg_prompt_embeds[z] = t5_neg_prompt_embeds[z] * neg_prompt_weights_3[z]
-        t5_neg_prompt_embeds = t5_neg_prompt_embeds.unsqueeze(0)
+            for z in range(len(t5_neg_weight_tensor)):
+                if t5_neg_weight_tensor[z] != 1.0:
+                    t5_neg_token_embedding[z] = t5_neg_token_embedding[z] * t5_neg_weight_tensor[z]
+
+            t5_neg_token_embedding = t5_neg_token_embedding.unsqueeze(0)
+            t5_neg_embeds.append(t5_neg_token_embedding)
+
+        t5_neg_prompt_embeds = torch.cat(t5_neg_embeds, dim=1)
     else:
+        # minimum token size is 1: [B(1) × T(1) × C(4096)]
         t5_neg_prompt_embeds    = torch.zeros(1, 4096, dtype = prompt_embeds.dtype).unsqueeze(0)
-        t5_neg_prompt_embeds    = t5_prompt_embeds.to(device=pipe.device)
+        t5_neg_prompt_embeds    = t5_neg_prompt_embeds.to(device=pipe.device)
 
     clip_neg_prompt_embeds = torch.nn.functional.pad(
         negative_prompt_embeds, (0, t5_neg_prompt_embeds.shape[-1] - negative_prompt_embeds.shape[-1])
     )
     sd3_neg_prompt_embeds = torch.cat([clip_neg_prompt_embeds, t5_neg_prompt_embeds], dim=-2)
+
+    ###### 5. Merge ######
 
     # padding
     import torch.nn.functional as F
@@ -1631,7 +1747,7 @@ def get_weighted_text_embeddings_sd3(
 def get_weighted_text_embeddings_flux1(
     pipe: FluxPipeline
     , prompt: str               = ""
-    , llm_prompt: str | None    = None # T5 prompt
+    , llm_prompt: Optional[str] = None # T5 prompt
     , device                    = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -1668,7 +1784,7 @@ def get_weighted_text_embeddings_flux1(
         pipe.tokenizer_2, llm_prompt
     )
 
-    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights(
+    prompt_token_groups, prompt_weight_groups = group_tokens_and_weights_clip(
         prompt_tokens.copy()
         , prompt_weights.copy()
         , pad_last_block = True
