@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This repository is intended to be used as a **submodule** for [taiyo2001/long-prompting](https://github.com/taiyo2001/long-prompting). It is designed to work as a component within that parent framework.
+
 # Stable Diffusion Long Prompt Weighted Embedding
 
 - [Stable Diffusion Long Prompt Weighted Embedding](#stable-diffusion-long-prompt-weighted-embedding)
@@ -16,7 +19,7 @@
 
 <a href="https://www.amazon.com/Using-Stable-Diffusion-Python-Generation/dp/1835086373" target="_blank"><img src="https://m.media-amazon.com/images/I/81qJBJlgGEL._SL1500_.jpg" alt="Using Stable Diffusion with Python" height="256px" align="right"></a>
 
-Overcoming the 77-token prompt limitation, generating long-weighted prompt embeddings for Stable Diffusion, this module supports generating embedding and pooled embeddings for long prompt weighted. The generated embedding is compatible with [Huggingface Diffusers](https://github.com/huggingface/diffusers). 
+Overcoming the 77-token prompt limitation, generating long-weighted prompt embeddings for Stable Diffusion, this module supports generating embedding and pooled embeddings for long prompt weighted. The generated embedding is compatible with [Huggingface Diffusers](https://github.com/huggingface/diffusers).
 
 The prompt format is compatible with [AUTOMATIC1111 stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 
@@ -41,7 +44,7 @@ The detailed implementation is covered in chapter 10 of book [Using Stable Diffu
 
 * [06/30/2024] Add support Stable Diffusion 3 pipeline without T5 encoder.
 
-## Install 
+## Install
 
 install `torchao`:
 ```
@@ -61,9 +64,9 @@ pip install git+https://github.com/xhinker/sd_embed.git@main
 
 <summary>Flux.1 embedding usage</summary>
 
-To use Flux.1 in a 24G VRAM GPU, we need to quantize the Transformer model and T5 text encoder model to `qfloat8` using `optimum-quanto`. see [Quanto: a PyTorch quantization backend for Optimum](https://huggingface.co/blog/quanto-introduction) and [Memory-efficient Diffusion Transformers with Quanto and Diffusers](https://huggingface.co/blog/quanto-diffusers) to convert Diffusion model weights to `qfloat8` so that we can use Flux in a 24G VRAM with Diffusers. 
+To use Flux.1 in a 24G VRAM GPU, we need to quantize the Transformer model and T5 text encoder model to `qfloat8` using `optimum-quanto`. see [Quanto: a PyTorch quantization backend for Optimum](https://huggingface.co/blog/quanto-introduction) and [Memory-efficient Diffusion Transformers with Quanto and Diffusers](https://huggingface.co/blog/quanto-diffusers) to convert Diffusion model weights to `qfloat8` so that we can use Flux in a 24G VRAM with Diffusers.
 
-Here is the complete usage sample: 
+Here is the complete usage sample:
 
 ```py
 from diffusers import DiffusionPipeline, FluxTransformer2DModel
@@ -91,10 +94,10 @@ pipe.enable_model_cpu_offload()
 
 #%%
 prompt = """\
-A dreamy, soft-focus photograph capturing a romantic Jane Austen movie scene, 
-in the style of Agnes Cecile. Delicate watercolors, misty background, 
-Regency-era couple, tender embrace, period clothing, flowing dress, dappled sunlight, 
-ethereal glow, gentle expressions, intricate lace, muted pastels, serene countryside, 
+A dreamy, soft-focus photograph capturing a romantic Jane Austen movie scene,
+in the style of Agnes Cecile. Delicate watercolors, misty background,
+Regency-era couple, tender embrace, period clothing, flowing dress, dappled sunlight,
+ethereal glow, gentle expressions, intricate lace, muted pastels, serene countryside,
 timeless romance, poetic atmosphere, wistful mood, look at camera.
 """
 
@@ -114,7 +117,7 @@ image = pipe(
 display(image)
 ```
 
-If you use `FLUX.1-schnell`, set `num_inference_steps` to `4`. 
+If you use `FLUX.1-schnell`, set `num_inference_steps` to `4`.
 
 ![alt text](images/flux1_dev_sample.png)
 
@@ -144,12 +147,12 @@ Generate the embedding and use it to generate images:
 ```py
 pipe.to('cuda')
 
-prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
+prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus.
+This imaginative creature features the distinctive, bulky body of a hippo,
+but with a texture and appearance resembling a golden-brown, crispy waffle.
+The creature might have elements like waffle squares across its skin and a syrup-like sheen.
+It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting,
+possibly including oversized utensils or plates in the background.
 The image should evoke a sense of playful absurdity and culinary fantasy.
 """
 
@@ -179,7 +182,7 @@ image = pipe(
     , pooled_prompt_embeds          = pooled_prompt_embeds
     , negative_pooled_prompt_embeds = negative_pooled_prompt_embeds
     , num_inference_steps           = 30
-    , height                        = 1024 
+    , height                        = 1024
     , width                         = 1024 + 512
     , guidance_scale                = 4.0
     , generator                     = torch.Generator("cuda").manual_seed(2)
@@ -226,12 +229,12 @@ decoder = StableCascadeDecoderPipeline.from_pretrained(
     variant='bf16',
     torch_dtype=torch.float16)
 
-prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
+prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus.
+This imaginative creature features the distinctive, bulky body of a hippo,
+but with a texture and appearance resembling a golden-brown, crispy waffle.
+The creature might have elements like waffle squares across its skin and a syrup-like sheen.
+It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting,
+possibly including oversized utensils or plates in the background.
 The image should evoke a sense of playful absurdity and culinary fantasy.
 """
 
@@ -311,13 +314,13 @@ Without using long prompt weighted embedding:
 
 </details>
 
-## Stable Diffusion XL 
+## Stable Diffusion XL
 
 <details>
 
 <summary>SDXL embedding usage sample</summary>
 
-To use the long prompt weighted embedding for SDXL, simply import the embedding function - `from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl` for sdxl. 
+To use the long prompt weighted embedding for SDXL, simply import the embedding function - `from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl` for sdxl.
 
 ```py
 import gc
@@ -332,12 +335,12 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 pipe.to('cuda')
 
-prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
+prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus.
+This imaginative creature features the distinctive, bulky body of a hippo,
+but with a texture and appearance resembling a golden-brown, crispy waffle.
+The creature might have elements like waffle squares across its skin and a syrup-like sheen.
+It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting,
+possibly including oversized utensils or plates in the background.
 The image should evoke a sense of playful absurdity and culinary fantasy.
 """
 
@@ -367,7 +370,7 @@ image = pipe(
     , pooled_prompt_embeds          = pooled_prompt_embeds
     , negative_pooled_prompt_embeds = negative_pooled_prompt_embeds
     , num_inference_steps           = 30
-    , height                        = 1024 
+    , height                        = 1024
     , width                         = 1024 + 512
     , guidance_scale                = 4.0
     , generator                     = torch.Generator("cuda").manual_seed(2)
@@ -396,7 +399,7 @@ Without using long prompt weighted embedding:
 
 <summary>Stable Diffusion V1.5 usage sample</summary>
 
-To use the long prompt weighted embedding for SDXL, use the embedding function - `get_weighted_text_embeddings_sd15`. 
+To use the long prompt weighted embedding for SDXL, use the embedding function - `get_weighted_text_embeddings_sd15`.
 
 ```py
 import gc
@@ -412,12 +415,12 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 pipe.to('cuda')
 
-prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
+prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus.
+This imaginative creature features the distinctive, bulky body of a hippo,
+but with a texture and appearance resembling a golden-brown, crispy waffle.
+The creature might have elements like waffle squares across its skin and a syrup-like sheen.
+It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting,
+possibly including oversized utensils or plates in the background.
 The image should evoke a sense of playful absurdity and culinary fantasy.
 """
 
